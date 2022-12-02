@@ -1,0 +1,10 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-devtools
+  - r-dplyr
+  - bioconductor-rhdf5
+  - bioconductor-biomart
+  - r-vctrs
+  - r-sleuth
