@@ -120,9 +120,8 @@ dds <- DESeq(dds)
 resultsNames(dds)
 
 res2 <- results(dds, alpha=0.05)
-
 res2 <- na.omit(res2)
-saveRDS(res2, "pm_deseq2.txt")
+saveRDS(res2, "pm_deseq2.rds")
 
 up <- subset(res2, res2$log2FoldChange > 1 & res2$padj <= 0.05)
 up <- up[order(-up$log2FoldChange),]
