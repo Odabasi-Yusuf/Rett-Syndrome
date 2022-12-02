@@ -1,0 +1,170 @@
+# Rett-Syndrome
+# SNAKEMAKE__PRE-ANALYSIS__DEG__WGCNA__GSEA
+
+library(devtools)
+library(tidyverse)
+library(DESeq2)
+library(EnhancedVolcano)
+library(WGCNA)
+library(DGEobj.utils)
+library(wrMisc)
+library(ggfortify)
+library(sva)
+library(pheatmap)
+
+phenotype = sapply(condition_df$phenotype, switch, "WT"= 1, "RTT" = 2, USE.NAMES = F)
+tissue = sapply(condition_df$tissue, switch, "IPSC" = 1, "NPC" = 2, "NEU" = 3, "Postmortem" = 4, USE.NAMES = F)
+batch <- condition_df$batch
+
+
+alldata_combat <- ComBat(a[,c(1:82)], batch = batch)
+alldata_combat <- as.data.frame(alldata_combat)
+saveRDS(alldata_combat, "alldata_TPM_combat.rds")
+TPM <- readRDS("alldata_TPM_combat.rds")
+
+ipsc <- t(cbind(TPM[,c(22:30)], TPM[,c(39,41,42,46,47,48,59,60,61)]))
+npc2 <- t(cbind(TPM[,c(31:36)], TPM[,c(49,50,51,52,62)]))
+neu <- t(cbind(TPM[,c(14:21)], TPM[,c(37,38,40,53,54,55,63,64,65,43,44,45,56,57,58,66)]))
+pm <- t(cbind(TPM[,c(1:4)], TPM[,c(67:82)]))
+
+metadata <- read.delim("SraRunTable-all-yeni.txt", sep = ",")
+
+pmmetadata <- rbind(metadata[c(1:4),], metadata[c(67:82),])
+neumetadata <- rbind(metadata[c(14:21),], metadata[c(37,38,40,53,54,55,63,64,65,43,44,45,56,57,58,66),])
+npcmetadata <- rbind(metadata[c(5:13),], metadata[c(31:36),], metadata[c(49,50,51,52,62),])
+npcmetadata2 <- rbind(metadata[c(31:36),], metadata[c(49,50,51,52,62),])
+ipscmetadata <- rbind(metadata[c(22:30),], metadata[c(39,41,42,46,47,48,59,60,61),])
+
+
+library(WGCNA)
+library(ggforce)
+library(ComplexHeatmap)
+library(tidyverse)
+
+sampleTree = hclust(dist(neu), method = "average");
+sizeGrWindow(12,9)
+par(cex = 0.6);
+par(mar = c(0,4,2,0))
+plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5,
+     cex.axis = 1.5, cex.main = 2)
+
+
+allowWGCNAThreads() 
+
+sft <- pickSoftThreshold(pm,
+                         dataIsExpr = TRUE,
+                         corFnc = cor,
+                         networkType = "signed"
+)
+
+powers = c(c(1:10), seq(from = 12, to=20, by=2))
+sizeGrWindow(9, 5)
+par(mfrow = c(1,2));
+cex1 = 0.9;
+
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+     main = paste("Scale independence"));
+text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     labels=powers,cex=cex1,col="red");
+# this line corresponds to using an R^2 cut-off of h
+abline(h=0.80,col="red")
+# Mean connectivity as a function of the soft-thresholding power
+plot(sft$fitIndices[,1], sft$fitIndices[,5],
+     xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
+     main = paste("Mean connectivity"))
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
+
+
+bwnet <- blockwiseModules(pm,
+                          maxBlockSize = 15000,
+                          TOMType = "signed",
+                          power = 12,
+                          numericLabels = TRUE, 
+                          randomSeed = 1234, 
+)
+
+
+mergedColors = labels2colors(bwnet$colors)
+plotDendroAndColors(
+  bwnet$dendrograms[[1]],
+  mergedColors[bwnet$blockGenes[[1]]],
+  "Module colors",
+  dendroLabels = FALSE,
+  hang = 0.03,
+  addGuide = TRUE,
+  guideHang = 0.05 )
+
+module_eigengenes <- bwnet$MEs
+head(module_eigengenes)
+
+pmmetadata$Run <- rownames(module_eigengenes)
+pmmetadata$phenotype <- as.factor(pmmetadata$phenotype)
+
+des_mat <- model.matrix(~pmmetadata$phenotype)
+
+fit <- limma::lmFit(t(module_eigengenes), design = des_mat)
+fit <- limma::eBayes(fit)
+
+stats_df <- limma::topTable(fit, number = ncol(module_eigengenes)) %>%
+  tibble::rownames_to_column("module")
+head(stats_df)
+
+
+module_0_df <- module_eigengenes %>%
+  tibble::rownames_to_column("accession_code") %>%
+  # Here we are performing an inner join with a subset of metadata
+  dplyr::inner_join(neumetadata %>%
+                      dplyr::select(Run, phenotype),
+                    by = c("accession_code" = "Run")
+  )
+
+
+ggplot(
+  module_0_df,
+  aes(
+    x = phenotype,
+    y = ME0,
+    color = phenotype
+  )
+) +
+  
+  geom_boxplot(width = 0.2, outlier.shape = NA) +
+  
+  ggforce::geom_sina(maxwidth = 0.3) +
+  theme_classic()
+
+
+gene_module_key <- tibble::enframe(bwnet$colors, name = "gene", value = "module") %>%
+  
+  dplyr::mutate(module = paste0("ME", module))
+me3 <- gene_module_key %>%
+  dplyr::filter(module == "ME3")
+
+
+readr::write_tsv(me4[,-2], file = "ME4_neu.tsv")
+modules_of_interest = c("ME3")
+
+genes_of_interest = gene_module_key %>%
+  subset(module %in% modules_of_interest)
+
+tneu <- t(neu)
+expr_of_interest = tneu[genes_of_interest$gene,]
+
+allowWGCNAThreads()
+t_expr_of_interest <- t(expr_of_interest)
+TOM = TOMsimilarityFromExpr(t_expr_of_interest,
+                            power = 10)
+
+row.names(TOM) = row.names(expr_of_interest)
+colnames(TOM) = row.names(expr_of_interest)
+
+
+cyt = exportNetworkToCytoscape(TOM,
+                               edgeFile = paste("CytoscapeInput-edges-", paste(modules_of_interest, collapse="-"), ".txt", sep=""),
+                               nodeFile = paste("CytoscapeInput-nodes-", paste(modules_of_interest, collapse="-"), ".txt", sep=""),
+                               weighted = TRUE,
+                               threshold = 0.02);
+edge1 <- read.delim("CytoscapeInput-edges-ME3.txt")
+
+
