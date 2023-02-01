@@ -128,7 +128,7 @@ saveRDS(res2, "pm_deseq2.rds")
 #neu_res <- readRDS("neu_deseq2.rds")
 #npc_res <- readRDS("npc_deseq2.rds")
 #ipsc_res <- readRDS("ipsc_deseq2.rds")
-#pm_res <- readRDS("pm_deseq2.rds")
+pm_res <- readRDS("pm_deseq2.rds")
 
 pm_res$Expression_Trend <- "NS"
 pm_res$Expression_Trend[pm_res$log2FoldChange > 1 & pm_res$padj < 0.05] <- "UP"
@@ -143,12 +143,12 @@ down_list <- head(rownames(down), n=10L)
 plot_top_20 <- c(up_list, down_list)
 pm_res$Gname <- pm_res@rownames
 
-o <-as.data.frame(pm_res)
+dg <-as.data.frame(pm_res)
 
-top10 <- o %>%
+top10 <- df %>%
   filter(Gname %in% plot_top_20)
 
-p <- ggplot(o, aes(x=log2FoldChange, y=-log10(padj), color=factor(Expression_Trend))) + geom_point() + theme_minimal() +
+p <- ggplot(df, aes(x=log2FoldChange, y=-log10(padj), color=factor(Expression_Trend))) + geom_point() + theme_minimal() +
   geom_vline(xintercept=c(-1, 1), col="red") + geom_hline(yintercept=-log10(0.05), col="red") +
   geom_label_repel(data = top10, aes(label = Gname), force = 2, nudge_y = 1) + scale_x_continuous(breaks = c(seq(-6, 22, 6)),     
                    limits = c(-6, 22))+ labs(colour = "Expression \nTrend")
@@ -172,35 +172,35 @@ ipsc_down_list <- ipsc_down@rownames
 write.table(ipsc_down_list, 'ipsc_down.txt')
 write.table(ipsc_up_list, 'ipsc_up.txt')
 
-ipsc_up <- npc_dds[which(npc_dds$log2FoldChange > 1 & npc_dds$padj <= .05),]
-ipsc_up <- ipsc_up[order(-ipsc_up$log2FoldChange),]
-npc_up_list <- ipsc_up@rownames
+npc_up <- npc_dds[which(npc_dds$log2FoldChange > 1 & npc_dds$padj <= .05),]
+npc_up <- npc_up[order(-npc_up$log2FoldChange),]
+npc_up_list <- npc_up@rownames
 
-ipsc_down <- npc_dds[which(npc_dds$log2FoldChange < -1 & npc_dds$padj <= .05),]
-ipsc_down <- ipsc_down[order(ipsc_down$log2FoldChange),]
+npc_down <- npc_dds[which(npc_dds$log2FoldChange < -1 & npc_dds$padj <= .05),]
+npc_down <- npc_down[order(npc_down$log2FoldChange),]
 npc_down_list <- ipsc_down@rownames
 
 write.table(npc_up_list, 'npc_up.txt')
 write.table(npc_down_list, 'npc_down.txt')
 
-ipsc_up <- neu_dds[which(neu_dds$log2FoldChange > 1 & neu_dds$padj <= .05),]
-ipsc_up <- ipsc_up[order(-ipsc_up$log2FoldChange),]
-neu_up_list <- ipsc_up@rownames
+neu_up <- neu_dds[which(neu_dds$log2FoldChange > 1 & neu_dds$padj <= .05),]
+neu_up <- neu_up[order(-neu_up$log2FoldChange),]
+neu_up_list <- neu_up@rownames
 
-ipsc_down <- neu_dds[which(neu_dds$log2FoldChange < -1 & neu_dds$padj <= .05),]
-ipsc_down <- ipsc_down[order(ipsc_down$log2FoldChange),]
-neu_down_list <- ipsc_down@rownames
+neu_down <- neu_dds[which(neu_dds$log2FoldChange < -1 & neu_dds$padj <= .05),]
+neu_down <- neu_down[order(neu_down$log2FoldChange),]
+neu_down_list <- neu_down@rownames
 
 write.table(neu_up_list, 'neu_up.txt')
 write.table(neu_down_list, 'neu_down.txt')
 
-ipsc_up <- pm_dds[which(pm_dds$log2FoldChange > 1 & pm_dds$padj <= .05),]
-ipsc_up <- ipsc_up[order(-ipsc_up$log2FoldChange),]
-pm_up_list <- ipsc_up@rownames
+pm_up <- pm_dds[which(pm_dds$log2FoldChange > 1 & pm_dds$padj <= .05),]
+pm_up <- pm_up[order(-pm_up$log2FoldChange),]
+pm_up_list <- pm_up@rownames
 
-ipsc_down <- pm_dds[which(pm_dds$log2FoldChange < -1 & pm_dds$padj <= .05),]
-ipsc_down <- ipsc_down[order(ipsc_down$log2FoldChange),]
-pm_down_list <- ipsc_down@rownames
+pm_down <- pm_dds[which(pm_dds$log2FoldChange < -1 & pm_dds$padj <= .05),]
+pm_down <- pm_down[order(pm_down$log2FoldChange),]
+pm_down_list <- pm_down@rownames
 
 write.table(pm_up_list, 'pm_up.txt')
 write.table(pm_down_list, 'pm_down.txt')
