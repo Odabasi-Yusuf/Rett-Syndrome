@@ -10,12 +10,14 @@ library(ggplot2)
 library("org.Hs.eg.db", character.only = TRUE)
 library(dplyr)
 
-deseq_neu <- readRDS("neu_deseq2.rds")
-deseq_npc <- readRDS("npc_deseq2.rds")
-deseq_pm <- readRDS("pm_deseq2.rds")
-deseq_ipsc <- readRDS("ipsc_deseq2.rds")
+#----------Repeat this step for each sample types-----
 
-signif_res <- ipsc_res[ipsc_res$padj < 0.05 & !is.na(ipsc_res$padj), ]
+#neu_res <- readRDS("neu_deseq2.rds")
+#npc_res <- readRDS("npc_deseq2.rds")
+#ipsc_res <- readRDS("ipsc_deseq2.rds")
+pm_res <- readRDS("pm_deseq2.rds")
+
+signif_res <- pm_res[pm_res$padj < 0.05 & !is.na(pm_res$padj), ]
 signif_genes <- rownames(signif_res)
 signif_res_lFC <- signif_res$log2FoldChange
 names(signif_res_lFC) <- signif_genes
@@ -70,6 +72,16 @@ categorys3 <- as.vector(categorys3)
 categorys4 <- c("isomerase activity","oxidoreductase activity","pigment metabolic process","pigment biosynthetic process")
 categorys4 <- as.vector(categorys4)
 
+gse_all <- gseGO(geneList=signif_res_lFC, 
+                 ont ="ALL", 
+                 keyType = "SYMBOL", 
+                 nPerm = 10000, 
+                 minGSSize = 3, 
+                 maxGSSize = 1500, 
+                 pvalueCutoff = 0.05, 
+                 verbose = TRUE, 
+                 OrgDb = "org.Hs.eg.db", 
+                 pAdjustMethod = "none")
 
 p4 <- cnetplot(gse_all, foldChange=NULL, showCategory = categorys1, 
                circular = TRUE, colorEdge = TRUE, cex_label_gene = 0.7, cex_label_category = 1) + ggtitle("Gene ontology for PM")
