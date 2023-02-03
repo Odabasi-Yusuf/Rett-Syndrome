@@ -1,0 +1,155 @@
+load("all_TPM_matrix.Rdata")
+GL_matrix_all <- as.data.frame(GL_matrix_all)
+
+condition_pm <- read.delim("SraRunTable-pm-yeni.txt", sep = ",")
+condition_ipsc <- read.delim("SraRunTable-ipsc-yeni.txt", sep = ",")
+condition_npc <- read.delim("SraRunTable-npc-yeni.txt", sep = ",")
+condition_neu <- read.delim("SraRunTable-neu-yeni.txt", sep = ",")
+
+pm <- GL_matrix_all[,c(2,4,67,68,69,70,75,76,77,78,1,3,71,72,73,74,79,80,81,82)]
+
+#Merging technical replication step, repeat it for IPSC, NPC, NEU
+row_mean <- rowMeans(GL_matrix_all[,c(49,50,51)])                                  
+npc <- as.data.frame(cbind(GSE123rep2_npc_WT = row_mean, npc))
+npc <- as.data.frame(cbind(npc, GSE123REP3_NEU_RTT = GL_matrix_all[,66]))
+
+metadata_pm <- as.data.frame(condition_pm[c(2,4,5,6,7,8,13,14,15,16,1,3,9,10,11,12,17,18,19,20),])
+
+row_mean <- rowMeans(pm)                                  
+pm <- as.data.frame(cbind(pm, tpmMean = row_mean))
+
+filter_pm <- pm[pm$tpmMean>1,]
+filter_pm <- filter_pm[,-21]
+filter_pm <- pm[,-21]
+
+
+metadata_pm$Run <- colnames(pm)
+cond1 <- subset(metadata_pm, phenotype == "WT")
+cond2 <- subset(metadata_pm, phenotype == "RTT")
+
+samples1 <- cond1$Run
+samples2 <- cond2$Run
+df <- as.matrix(pm)
+
+ident.1 = paste(cond1$phenotype,"-",samples1, sep = '')
+ident.2 = paste(cond2$phenotype,'-',samples2, sep = '')
+#Subset expression data into cells from two conditions:
+sub.data.id1 <- as.data.frame(as.matrix(x = df[, cond1$Run]))
+sub.data.id2 <- as.data.frame(as.matrix(x = df[, cond2$Run]))
+
+c1 <- dim(sub.data.id1)[2]
+c2 <- dim(sub.data.id2)[2]
+#merge the datasets from both conditions into a df
+tpm <- cbind( sub.data.id1,sub.data.id2)
+new.df <- cbind(Description="",tpm)
+#get the matrix dimensions
+dimensions <- dim(tpm)
+library(CePa)
+filePrefix = "pm_12TpmMatrix"
+header1="#1.2"
+header2=paste(dimensions[1],dimensions[2],sep="\t")
+write.table(header1, file=paste(filePrefix,".gct",sep=""), sep="\t", quote=FALSE,col.names=FALSE,row.names=FALSE   )
+write.table(header2, file=paste(filePrefix,".gct",sep=""), sep="\t", quote=FALSE,col.names=FALSE,row.names=FALSE , append=TRUE  )
+write.table(new.df, file=paste(filePrefix,".gct",sep=""), sep="\t", quote=FALSE, append=TRUE,col.names=NA   )
+#a <- read.gct("TpmMatrix.gct")
+
+ident.1 = rep(0,10)
+ident.2 = rep(1,10)
+conditions = c(ident.1,ident.2)
+header=paste(dimensions[2], "2", "1",sep=" ")
+line2=paste("#",conditions[1],conditions[11], sep=" ")
+line3=paste( rep(c(conditions[1],conditions[11]), c(c1,c2)),sep = " " )
+write.table(header, file=paste(filePrefix,".cls",sep=""), sep=" ",quote=FALSE,col.names=FALSE,row.names=FALSE)
+write.table(line2,file=paste(filePrefix,".cls",sep=""), sep=" ", quote=FALSE,col.names=FALSE,row.names=FALSE , append=TRUE)
+linex=line3[1]
+for (i in 2:length(line3)){
+  linex <- paste(linex,line3[i],sep =" ")}
+write.table(linex,file=paste(filePrefix,".cls",sep=""), sep=" ", quote=FALSE,col.names=FALSE,row.names=FALSE , append=TRUE)
+
+InputPrefix <-"pm_12TpmMatrix"
+srcdir <- "./Brainformatics-master/scripts/GSEA.1.1.R"
+GeneSet <- "Brainformatics-master/GeneSetDatabases/hallmark.gmt"
+doc.STRING= "reactomeGSEA"
+
+RunGSEA <- function(InputPrefix, GeneSet, outputDir = getwd(), ...){
+  GSEA.program.location <-srcdir
+  source(GSEA.program.location, verbose=F, max.deparse.length=9999)
+  
+  #print(doc.STRING)
+  #print(InputPrefix)
+  
+  GSEA(   # Input/Output Files :-------------------------------------------
+          input.ds =  paste(outputDir,"/",InputPrefix,".gct",sep = ""),           # Input gene expression Affy dataset file in RES or GCT format
+          input.cls = paste(outputDir,"/",InputPrefix,".cls",sep = ""),           # Input class vector (phenotype) file in CLS format
+          #gs.db =   paste(srcdir,"/../GeneSetDatabases/",GeneSet,sep=""),         # Gene set database in GMT format
+          gs.db =   paste(outputDir, "/", GeneSet, sep=""),         # Gene set database in GMT format
+          output.directory      = paste(outputDir,"/",sep = ""),        # Directory where to store output and results (default: "")
+          #  Program parameters :-------------------------------------------------------------------------------------------------------------------------
+          doc.string            = doc.STRING,   # Documentation string used as a prefix to name result files (default: "GSEA.analysis")
+          non.interactive.run   = TRUE,               # Run in interactive (i.e. R GUI) or batch (R command line) mode (default: F)
+          reshuffling.type      = "sample.labels", # Type of permutation reshuffling: "sample.labels" or "gene.labels" (default: "sample.labels"
+          nperm                 = 1000,            # Number of random permutations (default: 1000)
+          weighted.score.type   =  1,              # Enrichment correlation-based weighting: 0=no weight (KS), 1= weigthed, 2 = over-weigthed (default: 1)
+          nom.p.val.threshold   = 0.001,              # Significance threshold for nominal p-vals for gene sets (default: -1, no thres)
+          fwer.p.val.threshold  = 0.001,              # Significance threshold for FWER p-vals for gene sets (default: -1, no thres)
+          fdr.q.val.threshold   = 0.25,            # Significance threshold for FDR q-vals for gene sets (default: 0.25)
+          topgs                 = 1615,              # Besides those passing test, number of top scoring gene sets used for detailed reports (default: 10)
+          adjust.FDR.q.val      = F,               # Adjust the FDR q-vals (default: F)
+          gs.size.threshold.min = 2,              # Minimum size (in genes) for database gene sets to be considered (default: 25)
+          gs.size.threshold.max = 2000,             # Maximum size (in genes) for database gene sets to be considered (default: 500)
+          reverse.sign          = F,               # Reverse direction of gene list (pos. enrichment becomes negative, etc.) (default: F)
+          preproc.type          = 0,               # Preproc.normalization: 0=none, 1=col(z-score)., 2=col(rank) and row(z-score)., 3=col(rank). (def: 0)
+          random.seed           = 3338,            # Random number generator seed. (default: 123456)
+          perm.type             = 0,               # For experts only. Permutation type: 0 = unbalanced, 1 = balanced (default: 0)
+          fraction              = 1.0,             # For experts only. Subsampling fraction. Set to 1.0 (no resampling) (default: 1.0)
+          replace               = F,               # For experts only, Resampling mode (replacement or not replacement) (default: F)
+          save.intermediate.results = F,           # For experts only, save intermediate results (e.g. matrix of random perm. scores) (default: F)
+          OLD.GSEA              = F,               # Use original (old) version of GSEA (default: F)
+          use.fast.enrichment.routine = T          # Use faster routine to compute enrichment for random permutations (default: T)
+  )
+  
+}
+
+RunGSEA(InputPrefix = InputPrefix, GeneSet = GeneSet, outputDir = getwd())
+
+#This function returns the table of all Enrichment results with corrected p-values.
+library(tidyverse)
+library(dplyr)
+#setwd(GSEAoutputDir)
+
+majorSummaryTable <- NULL
+GSreportsTable <- NULL
+mySumFiles <- list.files(pattern="*SUMMARY.RESULTS.REPORT*")
+
+for (i in 1:length(mySumFiles)){
+  
+  sumTable <- read.delim(mySumFiles[i]) %>% as.tibble() %>% add_column(Comparison=strsplit(mySumFiles[i],"_Clust")[[1]][1],EnrichmentDirection_ClusterID=strsplit(mySumFiles[i],"\\.")[[1]][5])
+  majorSummaryTable <- bind_rows(majorSummaryTable, sumTable)
+  
+  #for each Gene set, j, in the summary table:
+  for(j in 1:length(read.delim(mySumFiles[i])[,1])){
+    #the Gene Set j from the directory: Get the file prefix from the Summary file name + combine with gene set name + add ".txt" to the end.
+    geneSetReportfile=list.files(pattern=paste(strsplit(mySumFiles[i],"\\.")[[1]][1], (read.delim(mySumFiles[i]) %>% as.tibble() %>% select(GS) %>% c())[[1]][j],"report",strsplit(mySumFiles[i],"\\.")[[1]][5], "*.txt", sep = "."))
+    
+    if (!identical(geneSetReportfile, character(0))){
+      #if (!identical(geneSetReportfile, character(0)) && (geneSetReportfile != "Subordinate_Control_Cluster_19_ExpMatrix_Calvin_manual_genesets.neuromuscular junction.report.Control-19.12.txt")){
+      
+      gs.reporttable <-  read.delim(geneSetReportfile) %>%
+        as.tibble() %>%
+        dplyr::filter(CORE_ENRICHMENT == "YES") %>% # filter out genes which are not in the Leading Edge.
+        add_column(
+          Comparison = strsplit(mySumFiles[i],"_Clust")[[1]][1], #Create a column for Comparison type, ex; 'Dominant_Control'
+          EnrichmentDirection_ClusterID = strsplit(mySumFiles[i],"\\.")[[1]][5], #Create a column for Enrichment direction, ex; 'Control-1'. This also shows the cluster id.
+          GS = (read.delim(mySumFiles[i]) %>% as.tibble() %>% select(GS) %>% c())[[1]][j] #Create a column for Gene Set name.
+        )
+      GSreportsTable <- bind_rows(GSreportsTable, gs.reporttable)
+      
+    }else{break}#closes ifelse for report file existance.
+  }#closes loop for j
+}#closes loop for i
+
+majorSummaryTable <- majorSummaryTable %>% as.tibble() %>% mutate(pAdj.Nom=p.adjust(NOM.p.val,method="BH")) %>% arrange(pAdj.Nom)
+sigtable <- majorSummaryTable %>% dplyr::filter(FDR.q.val < 0.25) %>% unite(plotfilename, Comparison,GS,EnrichmentDirection_ClusterID,sep="*",remove = FALSE)
+#Write the main table and only significant enrichments to separate files:
+majorSummaryTable %>% write_tsv(file.path("All.Enrich1ment.stats.txt"))
+sigtable %>% write_tsv(file.path("below1_25percent.Enrichments.txt"))
