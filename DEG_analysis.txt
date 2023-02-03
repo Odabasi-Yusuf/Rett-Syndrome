@@ -1,0 +1,247 @@
+# Rett-Syndrome
+# SNAKEMAKE__PRE-ANALYSIS__DEG__WGCNA__GSEA
+
+library(devtools)
+library(tidyverse)
+library(DESeq2)
+library(EnhancedVolcano)
+library(WGCNA)
+library(DGEobj.utils)
+library(wrMisc)
+library(ggfortify)
+library(sva)
+library(pheatmap)
+
+                                        #-----------------Generate Count Matrix--------------------
+#base_dir <- "./SRRs-all"
+#sample_id <- dir(file.path(base_dir))
+#kal_dirs <- sapply(sample_id, function(id) file.path(base_dir, id, "abundance.h5"))
+#condition_all <- read.delim("SraRunTable-all-yeni.txt", sep = ",")
+#mart <- biomaRt::useMart(biomart = "ENSEMBL_MART_ENSEMBL",dataset = "hsapiens_gene_ensembl",host = 'ensembl.org')
+#t2g1 <- getBM(attributes = c("ensembl_transcript_id","external_gene_name","transcript_biotype"), mart = mart)
+#t2g1 = t2g1[which(t2g1$transcript_biotype=="protein_coding"),]
+#load("tximport.Rdata")
+#txi <- tximport(kal_dirs, type = "kallisto", tx2gene = as_tibble(t2g1), ignoreTxVersion = TRUE)
+#count<- as.data.frame(txi$counts)
+#count<- count[-1,]
+#count<- round(count,0)
+#saveRDS(count,file = "alldata_count.rds")
+
+count <- readRDS("alldata_count.rds")
+condition_pm <- read.delim("SraRunTable-pm-yeni.txt", sep = ",")
+condition_ipsc <- read.delim("SraRunTable-ipsc-yeni.txt", sep = ",")
+condition_npc <- read.delim("SraRunTable-npc-yeni.txt", sep = ",")
+condition_neu <- read.delim("SraRunTable-neu-yeni.txt", sep = ",")
+
+#-----------------------------Tissue Seperation and Technical Merging Replications----------------------------
+gse107ipsc1_WT <- count[,24] + count[,25]
+gse107ipsc2_WT <- count[,26]
+gse107ipsc3_WT <- count[,27] + count[,28]
+gse123ipsc4_WT <- count[,39] + count[,41] + count[,42]    
+gse123ipsc5_WT <- count[,46] + count[,47] + count[,48]
+gse123ipsc6_WT <- count[,59] + count[,60] + count[,61]
+gse107ipsc7_RTT <- count[,29] + count[,20]
+gse107ipsc8_RTT <- count[,22] + count[,23]
+
+ipsc_no_rep <- cbind(gse107ipsc1_WT, gse107ipsc2_WT, gse107ipsc3_WT, gse123ipsc4_WT, gse123ipsc5_WT,
+                     gse123ipsc6_WT, gse107ipsc7_RTT, gse107ipsc8_RTT)
+
+
+gse123npc4_WT <- count[,31] + count[,32] + count[,33] 
+gse123npc5_WT <- count[,49] + count[,50] + count[,51]
+gse123npc8_RTT <- count[,34] + count[,35] + count[,36]   
+gse123npc9_RTT <- count[,52]
+gse123npc10_RTT <- count[,62]
+
+npc_no_rep <- cbind(gse123npc4_WT, gse123npc5_WT, gse123npc8_RTT, gse123npc9_RTT, gse123npc10_RTT)
+
+gse107neu1_WT <- count[,14]
+gse107neu2_WT <- count[,15]
+gse107neu3_WT <- count[,16] + count[,17]
+gse123neu4_WT <- count[,37] + count[,38] + count[,40] 
+gse123neu5_WT <- count[,53] + count[,54] + count[,55]
+gse123neu6_WT <- count[,63] + count[,64] + count[,65]
+gse107neu7_RTT <- count[,18] + count[,19]
+gse107neu8_RTT <- count[,20] + count[,21]
+gse123neu9_RTT <- count[,43] + count[,44] + count[,45] 
+gse123neu10_RTT <- count[,56] + count[,57] + count[,58]
+gse123neu11_RTT <- count[,66]
+
+neu_no_rep <- cbind(gse107neu1_WT, gse107neu2_WT, gse107neu3_WT, gse123neu4_WT, gse123neu5_WT,
+                    gse123neu6_WT, gse107neu7_RTT, gse107neu8_RTT, gse123neu9_RTT, gse123neu10_RTT, gse123neu11_RTT)
+
+pm_no_rep <- cbind(count[,c(1:4)],count[,c(67:82)])
+
+neumetadata <- condition_neu[c(1,2,3,9,10,11,5,6,12,13,14),]
+npcmetadata <- condition_npc[c(11:15),]
+ipscmetadata <- condition_ipsc[c(3,4,5,10,11,12,1,2),]
+pmmetadata <- condition_pm
+
+
+rm(gse107ipsc1_WT,gse107ipsc2_WT,gse107ipsc3_WT,gse107ipsc7_RTT,gse107ipsc8_RTT,gse107neu1_WT,gse107neu2_WT,gse107neu3_WT,gse107neu7_RTT,
+   gse107neu8_RTT,gse123ipsc4_WT,gse123ipsc5_WT,gse123ipsc6_WT,gse123neu10_RTT,gse123neu11_RTT,gse123neu4_WT,gse123neu5_WT,gse123neu6_WT,
+   gse123neu9_RTT,gse123npc10_RTT,gse123npc4_WT,gse123npc5_WT,gse123npc8_RTT,gse123npc9_RTT,condition_ipsc,condition_neu,condition_npc,
+   condition_pm)
+gc()
+
+#----------------------Convert Count to CPM matrix for CV Sorting--------------------
+
+#Repeat this step for 4 sample groups (IPSC, NPC, NEU, PM)
+
+sample_CPM <- convertCounts(as.matrix(pm_no_rep),
+                         unit      = "CPM",
+                         log       = FALSE,
+                         normalize = "none")
+
+rownames(sample_CPM) <- rownames(count)
+rownames(pm_no_rep) <- rownames(count)
+
+CV_values <- rowCVs(sample_CPM)
+sample_CV <- cbind(sample_CPM, cv_values = CV_values)
+sample_CV_SORT <- sample_CV[order(sample_CV[,21],decreasing=TRUE),]
+sample_CV_TOP10000 <- sample_CV_SORT[c(1:10000),c(1:20)]
+top10000 <-rownames(sample_CV_TOP10000)
+cv_filtered_sample <- pm_no_rep[rownames(pm_no_rep) %in% top10000, ] 
+
+#-------------------------------Deseq2 Object and Volcano Plot-----------------------------
+
+#Repeat this step for 4 sample groups (IPSC, NPC, NEU, PM)
+
+pmmetadata$batch <- factor(pmmetadata$batch)
+pmmetadata$phenotype <- factor(pmmetadata$phenotype)
+factor_col <- sapply(pmmetadata,is.factor)
+factor_col
+
+rownames(pmmetadata) <- colnames(cv_filtered_sample)
+dds <- DESeqDataSetFromMatrix(cv_filtered_sample, pmmetadata,~batch + phenotype)
+
+dds$phenotype <- relevel(dds$phenotype, ref = "WT")
+dds <- DESeq(dds)
+resultsNames(dds)
+
+res2 <- results(dds, alpha=0.05)
+res2 <- na.omit(res2)
+saveRDS(res2, "pm_deseq2.rds") 
+
+#----volcano plot----
+
+#neu_res <- readRDS("neu_deseq2.rds")
+#npc_res <- readRDS("npc_deseq2.rds")
+#ipsc_res <- readRDS("ipsc_deseq2.rds")
+pm_res <- readRDS("pm_deseq2.rds")
+
+pm_res$Expression_Trend <- "NS"
+pm_res$Expression_Trend[pm_res$log2FoldChange > 1 & pm_res$padj < 0.05] <- "UP"
+pm_res$Expression_Trend[pm_res$log2FoldChange < -1 & pm_res$padj < 0.05] <- "DOWN"
+
+up <- subset(pm_res, pm_res$log2FoldChange > 1 & pm_res$padj <= 0.05)
+up <- up[order(-up$log2FoldChange),]
+up_list <- head(rownames(up), n=10L)
+down <- subset(pm_res, pm_res$log2FoldChange < -1 & pm_res$padj <= 0.05)
+down <- down[order(down$log2FoldChange),]
+down_list <- head(rownames(down), n=10L)
+plot_top_20 <- c(up_list, down_list)
+pm_res$Gname <- pm_res@rownames
+
+dg <-as.data.frame(pm_res)
+
+top10 <- df %>%
+  filter(Gname %in% plot_top_20)
+
+p <- ggplot(df, aes(x=log2FoldChange, y=-log10(padj), color=factor(Expression_Trend))) + geom_point() + theme_minimal() +
+  geom_vline(xintercept=c(-1, 1), col="red") + geom_hline(yintercept=-log10(0.05), col="red") +
+  geom_label_repel(data = top10, aes(label = Gname), force = 2, nudge_y = 1) + scale_x_continuous(breaks = c(seq(-6, 22, 6)),     
+                   limits = c(-6, 22))+ labs(colour = "Expression \nTrend")
+gc()
+
+#----------------------------Differetially Gene Lists and Overlapped Genes----------------------------
+ipsc_dds <- readRDS("ipsc_deseq2.rds")
+npc_dds <- readRDS("npc_deseq2.rds")
+neu_dds <- readRDS("neu_deseq2.rds")
+pm_dds <- readRDS("pm_deseq2.rds")
+
+
+ipsc_up <- ipsc_dds[which(ipsc_dds$log2FoldChange > 1 & ipsc_dds$padj <= .05),]
+ipsc_up <- ipsc_up[order(-ipsc_up$log2FoldChange),]
+ipsc_up_list <- ipsc_up@rownames
+
+ipsc_down <- ipsc_dds[which(ipsc_dds$log2FoldChange < -1 & ipsc_dds$padj <= .05),]
+ipsc_down <- ipsc_down[order(ipsc_down$log2FoldChange),]
+ipsc_down_list <- ipsc_down@rownames
+
+write.table(ipsc_down_list, 'ipsc_down.txt')
+write.table(ipsc_up_list, 'ipsc_up.txt')
+
+npc_up <- npc_dds[which(npc_dds$log2FoldChange > 1 & npc_dds$padj <= .05),]
+npc_up <- npc_up[order(-npc_up$log2FoldChange),]
+npc_up_list <- npc_up@rownames
+
+npc_down <- npc_dds[which(npc_dds$log2FoldChange < -1 & npc_dds$padj <= .05),]
+npc_down <- npc_down[order(npc_down$log2FoldChange),]
+npc_down_list <- ipsc_down@rownames
+
+write.table(npc_up_list, 'npc_up.txt')
+write.table(npc_down_list, 'npc_down.txt')
+
+neu_up <- neu_dds[which(neu_dds$log2FoldChange > 1 & neu_dds$padj <= .05),]
+neu_up <- neu_up[order(-neu_up$log2FoldChange),]
+neu_up_list <- neu_up@rownames
+
+neu_down <- neu_dds[which(neu_dds$log2FoldChange < -1 & neu_dds$padj <= .05),]
+neu_down <- neu_down[order(neu_down$log2FoldChange),]
+neu_down_list <- neu_down@rownames
+
+write.table(neu_up_list, 'neu_up.txt')
+write.table(neu_down_list, 'neu_down.txt')
+
+pm_up <- pm_dds[which(pm_dds$log2FoldChange > 1 & pm_dds$padj <= .05),]
+pm_up <- pm_up[order(-pm_up$log2FoldChange),]
+pm_up_list <- pm_up@rownames
+
+pm_down <- pm_dds[which(pm_dds$log2FoldChange < -1 & pm_dds$padj <= .05),]
+pm_down <- pm_down[order(pm_down$log2FoldChange),]
+pm_down_list <- pm_down@rownames
+
+write.table(pm_up_list, 'pm_up.txt')
+write.table(pm_down_list, 'pm_down.txt')
+
+df = list(ipsc_up_genes=ipsc_up_list, ipsc_down_genes=ipsc_down_list, npc_up_genes=npc_up_list, npc_down_genes=npc_down_list,
+          neu_up_genes=neu_up_list, neu_down_genes=neu_down_list, pm_up_genes=pm_up_list, pm_down_genes=pm_down_list)
+attributes(df) = list(names = names(df),
+                      row.names=1:max(length(ipsc_up_list),length(ipsc_down_list),length(npc_up_list),length(npc_down_list),
+                                      length(neu_up_list),length(neu_down_list),length(pm_up_list),length(pm_down_list)), 
+                      class='data.frame')
+
+
+geness <- c(df[,1],df[,2],df[,3],df[,4],df[,5],df[,6],df[,7],df[,8])
+
+
+columnname <- colnames(df)
+samples <- c(rep(columnname[1], 197), rep(columnname[2], 16), rep(columnname[3], 423), rep(columnname[4], 440), 
+             rep(columnname[5], 43), rep(columnname[6], 69), rep(columnname[7], 272), rep(columnname[8], 122))
+
+df2 <- data.frame(sample <- samples, genes <- geness)
+
+
+samples_id <- unique(df2$sample....samples)
+
+
+genler <- do.call(rbind, unlist(
+  
+  lapply(seq_along(samples_id), function(n)
+    
+    combn(samples_id, n, function(subtitles) {
+       
+      OLgenes <- Reduce(function(s, t2) intersect(s, df2$genes....geness[df2$sample....samples==t2]), 
+                        subtitles[-1], 
+                        df2$genes....geness[df2$sample....samples==subtitles[1]])
+      data.frame(
+        Sample_IDs=paste(subtitles, collapse=","),
+        Common_Genes=paste(OLgenes, collapse=",")
+      )
+    }, simplify=FALSE) 
+  ), 
+  recursive=FALSE)) 
+
+write.table(genler, file="common-genes", append = FALSE, sep = " ", dec = ".",
+            row.names = TRUE, col.names = TRUE)

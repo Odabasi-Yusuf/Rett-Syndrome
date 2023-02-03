@@ -1,0 +1,93 @@
+# Rett-Syndrome
+# SNAKEMAKE__PRE-ANALYSIS__DEG__WGCNA__GSEA
+
+library(DESeq2)
+library(DGEobj.utils)
+library(EnhancedVolcano)
+library(clusterProfiler)
+library(enrichplot)
+library(ggplot2)
+library("org.Hs.eg.db", character.only = TRUE)
+library(dplyr)
+
+#----------Repeat this step for each sample types-----
+
+#neu_res <- readRDS("neu_deseq2.rds")
+#npc_res <- readRDS("npc_deseq2.rds")
+#ipsc_res <- readRDS("ipsc_deseq2.rds")
+pm_res <- readRDS("pm_deseq2.rds")
+
+signif_res <- pm_res[pm_res$padj < 0.05 & !is.na(pm_res$padj), ]
+signif_genes <- rownames(signif_res)
+signif_res_lFC <- signif_res$log2FoldChange
+names(signif_res_lFC) <- signif_genes
+signif_res_lFC <- sort(signif_res_lFC, decreasing = TRUE)
+
+gse_pm1 <- gseGO(geneList=signif_res_lFC, 
+                 ont ="CC", 
+                 keyType = "SYMBOL", 
+                 nPerm = 10000, 
+                 minGSSize = 3, 
+                 maxGSSize = 1500, 
+                 pvalueCutoff = 0.05, 
+                 verbose = TRUE, 
+                 OrgDb = "org.Hs.eg.db", 
+                 pAdjustMethod = "none")
+
+gse_pm2 <- gseGO(geneList=signif_res_lFC, 
+                 ont ="MF", 
+                 keyType = "SYMBOL", 
+                 nPerm = 10000, 
+                 minGSSize = 3, 
+                 maxGSSize = 1500, 
+                 pvalueCutoff = 0.05, 
+                 verbose = TRUE, 
+                 OrgDb = "org.Hs.eg.db", 
+                 pAdjustMethod = "none")
+
+gse_pm3 <- gseGO(geneList=signif_res_lFC, 
+                 ont ="BP", 
+                 keyType = "SYMBOL", 
+                 nPerm = 10000, 
+                 minGSSize = 3, 
+                 maxGSSize = 1500, 
+                 pvalueCutoff = 0.05, 
+                 verbose = TRUE, 
+                 OrgDb = "org.Hs.eg.db", 
+                 pAdjustMethod = "none")
+
+require(DOSE)
+p1 <- dotplot(gse_pm1, showCategory=3, split=".sign", font.size = 9) + facet_grid(.~.sign) + ggtitle("CC ontology for PM")
+p2 <- dotplot(gse_pm2, showCategory=3, split=".sign", font.size = 9) + facet_grid(.~.sign) + ggtitle("MF ontology for PM")
+p3 <- dotplot(gse_pm3, showCategory=3, split=".sign", font.size = 9) + facet_grid(.~.sign) + ggtitle("BP ontology for PM")
+cowplot::plot_grid(p1, p3, ncol=2, rel_widths=c(0.5, 0.5))
+
+categorys1 <- c("presynapse","synapse","external encapsulating structure organization")
+categorys1 <- as.vector(categorys1)
+categorys2 <- c("synapse","presynapse","intrinsic component of synaptic membrane","tissue homeostasis",
+                "learning","regulation of cellular process","regulation of biological process")
+categorys2 <- as.vector(categorys2)
+categorys3 <- c("RNA metabolic process","chromatin","chromosome","nucleoplasm","regulation of gene expression","gene expression")
+categorys3 <- as.vector(categorys3)
+categorys4 <- c("isomerase activity","oxidoreductase activity","pigment metabolic process","pigment biosynthetic process")
+categorys4 <- as.vector(categorys4)
+
+gse_all <- gseGO(geneList=signif_res_lFC, 
+                 ont ="ALL", 
+                 keyType = "SYMBOL", 
+                 nPerm = 10000, 
+                 minGSSize = 3, 
+                 maxGSSize = 1500, 
+                 pvalueCutoff = 0.05, 
+                 verbose = TRUE, 
+                 OrgDb = "org.Hs.eg.db", 
+                 pAdjustMethod = "none")
+
+p4 <- cnetplot(gse_all, foldChange=NULL, showCategory = categorys1, 
+               circular = TRUE, colorEdge = TRUE, cex_label_gene = 0.7, cex_label_category = 1) + ggtitle("Gene ontology for PM")
+p5 <- cnetplot(gse_all, foldChange=NULL, showCategory = categorys2, 
+               circular = TRUE, colorEdge = TRUE, cex_label_gene = 0.7, cex_label_category = 1) + ggtitle("Gene ontology for NEU")
+p6 <- cnetplot(gse_all, foldChange=NULL, showCategory = categorys3, 
+               circular = TRUE, colorEdge = TRUE, cex_label_gene = 0.7, cex_label_category = 1) + ggtitle("Gene ontology for NPC")
+p7 <- cnetplot(gse_all, foldChange=NULL, showCategory = categorys4, 
+               circular = TRUE, colorEdge = TRUE, cex_label_gene = 0.7, cex_label_category = 1) + ggtitle("Gene ontology for iPSC")
